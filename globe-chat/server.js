@@ -15,6 +15,50 @@ app.use('/vendor', express.static(path.join(__dirname, 'node_modules/globe.gl/di
 // Earth textures (night lights, etc.) that come with the globe library
 app.use('/textures', express.static(path.join(__dirname, 'node_modules/three-globe/example/img')));
 
+// ---------- Live TV: which video each channel has live right now ----------
+// YouTube's "live_stream?channel=" player link sometimes picks a video the channel doesn't let
+// other websites play (BBC News, Sky News and WION did this), even though the live video
+// youtube.com shows for them IS allowed. So the server opens youtube.com/channel/<id>/live,
+// the same page you'd see on YouTube, takes the video ID from it, and the page plays that
+// exact video. Answers are remembered for 10 minutes so YouTube isn't asked on every click.
+const YT_CHANNEL_ID = /^UC[\w-]{22}$/;
+const LIVE_CACHE_MS = 10 * 60 * 1000;   // remember a found video for 10 minutes
+const MISS_CACHE_MS = 2 * 60 * 1000;    // if nothing was found, try again after 2 minutes
+const liveCache = new Map();            // channel ID -> { videoId, at }
+
+async function findLiveVideo(channelId) {
+  const cached = liveCache.get(channelId);
+  if (cached && Date.now() - cached.at < (cached.videoId ? LIVE_CACHE_MS : MISS_CACHE_MS)) {
+    return cached.videoId;
+  }
+  const res = await fetch(`https://www.youtube.com/channel/${channelId}/live`, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36',
+      'Accept-Language': 'en-US,en;q=0.9',
+    },
+    signal: AbortSignal.timeout(8000),   // give up after 8 seconds
+  });
+  const html = await res.text();
+  // The video ID is in the page's canonical link, and again in its player data
+  const match =
+    html.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/watch\?v=([\w-]{11})"/) ||
+    html.match(/"videoDetails":\{"videoId":"([\w-]{11})"/);
+  const videoId = match ? match[1] : null;
+  liveCache.set(channelId, { videoId, at: Date.now() });
+  return videoId;
+}
+
+app.get('/api/live/:channelId', async (req, res) => {
+  const { channelId } = req.params;
+  if (!YT_CHANNEL_ID.test(channelId)) return res.status(400).json({ error: 'Invalid channel' });
+  try {
+    res.json({ videoId: await findLiveVideo(channelId) });
+  } catch (err) {
+    console.error(`Could not look up the live video for ${channelId}: ${err.message}`);
+    res.json({ videoId: null });   // the page then falls back to YouTube's channel link
+  }
+});
+
 const MAX_HISTORY = 50;        // messages kept per country
 const MAX_LENGTH = 500;        // characters per message
 const MIN_INTERVAL_MS = 1000;  // basic spam protection: 1 message per second

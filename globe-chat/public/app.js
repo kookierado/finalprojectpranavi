@@ -344,7 +344,11 @@ let startCollapsed = false;
 try { startCollapsed = localStorage.getItem('chatCollapsed') === '1'; } catch {}
 setCollapsed(startCollapsed);
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') selectCountry(null);
+  if (e.key !== 'Escape') return;
+  // Escape first leaves theater mode (the TV keeps playing in the floating monitor).
+  // Only when there's no theater to leave does it deselect the country.
+  if (liveTV.handleEscape()) return;
+  selectCountry(null);
 });
 
 // =====================================================
@@ -381,3 +385,351 @@ socket.on('disconnect', () => {
   setLink('lost', 'Reconnecting');
   showStatus('Connection lost. Reconnecting…');
 });
+
+// =====================================================
+//  Live TV
+//  The channel list lives in channels.js. Each channel gets a pin on the globe.
+//  Clicking a pin opens theater mode. "Back to globe" shrinks the player into a
+//  floating monitor so you can keep exploring while it plays. Theater mode can
+//  also go full screen. All of this is ONE box (<section id="tv">) that changes
+//  shape, so the video never has to reload when you switch views.
+// =====================================================
+const liveTV = (() => {
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    viewport: $('viewport'),
+    button: $('tv-button'),
+    root: $('tv'),
+    frame: $('tv-frame'),
+    back: $('tv-back'),
+    title: $('tv-title'),
+    youtube: $('tv-youtube'),
+    expand: $('tv-expand'),
+    exitFull: $('tv-exit-full'),
+    stop: $('tv-stop'),
+    unmute: $('tv-unmute'),
+    full: $('tv-full'),
+    prev: $('tv-prev'),
+    next: $('tv-next'),
+    num: $('tv-num'),
+    name: $('tv-name'),
+    from: $('tv-from'),
+    upnext: $('tv-upnext'),
+    guide: $('tv-guide'),
+    keypad: $('tv-keypad'),
+    blocked: $('tv-blocked'),
+    blockedText: $('tv-blocked-text'),
+    blockedLink: $('tv-blocked-link'),
+  };
+
+  let mode = 'off';       // 'off', 'theater' or 'float'
+  let current = 0;        // which channel is playing (its position in CHANNELS)
+  let pinsOn = true;      // are the pins showing on the globe?
+  let muted = true;       // browsers only allow videos to start on their own when muted
+  let openGroup = null;   // which shared pin (like "Europe") has its list open
+
+  const count = CHANNELS.length;
+  const numberOf = (i) => String(i + 1).padStart(2, '0');   // 0 -> "01"
+
+  // ---------- Pins on the globe ----------
+  // One pin per channel, except channels in the same group share one pin.
+  // Europe has 5 channels close together, and 5 separate pins would pile on top of each other.
+  const pins = [];
+  CHANNELS.forEach((ch, i) => {
+    let pin = ch.group && pins.find((p) => p.group === ch.group);
+    if (!pin) {
+      pin = { group: ch.group || null, members: [] };
+      pins.push(pin);
+    }
+    pin.members.push(i);
+  });
+  for (const pin of pins) {
+    // A shared pin sits in the middle of its channels (the average of their positions)
+    pin.lat = pin.members.reduce((sum, i) => sum + CHANNELS[i].lat, 0) / pin.members.length;
+    pin.lng = pin.members.reduce((sum, i) => sum + CHANNELS[i].lng, 0) / pin.members.length;
+    pin.el = makePin(pin);
+  }
+
+  function makeButton(className, text, onClick) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = className;
+    btn.textContent = text;   // textContent, never innerHTML, same safety rule as the chat
+    btn.addEventListener('click', onClick);
+    return btn;
+  }
+
+  function makePin(pin) {
+    const wrap = document.createElement('div');
+    wrap.className = 'tv-pin-wrap';
+    // Stop clicks on a pin from also reaching the globe underneath (which would select a country)
+    for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click']) {
+      wrap.addEventListener(type, (e) => e.stopPropagation());
+    }
+
+    if (!pin.group) {
+      const ch = CHANNELS[pin.members[0]];
+      const btn = makeButton('tv-pin', ch.short, () => watch(pin.members[0]));
+      btn.setAttribute('aria-label', `Watch ${ch.name}, live from ${ch.place}`);
+      wrap.append(btn);
+      return wrap;
+    }
+
+    // Shared pin: the button opens a small list of its channels
+    const btn = makeButton('tv-pin', `${pin.group} · ${pin.members.length}`, () => {
+      openGroup = openGroup === pin.group ? null : pin.group;
+      render();
+    });
+    btn.setAttribute('aria-expanded', 'false');
+    const list = document.createElement('div');
+    list.className = 'tv-cluster';
+    list.hidden = true;
+    for (const i of pin.members) {
+      const item = makeButton('tv-cluster-item', CHANNELS[i].name, () => watch(i));
+      item.dataset.index = i;
+      list.append(item);
+    }
+    wrap.append(btn, list);
+    return wrap;
+  }
+
+  // globe.gl draws these HTML elements on the globe and hides them when they're on the far side
+  globe
+    .htmlElementsData(pins)
+    .htmlLat('lat')
+    .htmlLng('lng')
+    .htmlAltitude(0.01)
+    .htmlElement((pin) => pin.el)
+    .htmlTransitionDuration(0);
+
+  function refreshPins() {
+    // The pins stay on the globe; style.css hides them while .pins-off is set.
+    // Hidden in theater mode (the globe is covered). Always shown with the floating monitor:
+    // they're how you change channels there.
+    const show = mode === 'float' || (mode === 'off' && pinsOn);
+    el.viewport.classList.toggle('pins-off', !show);
+  }
+
+  // ---------- Channel keypad (theater mode) ----------
+  const keys = CHANNELS.map((ch, i) => {
+    const key = document.createElement('button');
+    key.type = 'button';
+    key.className = 'tv-key';
+    const top = document.createElement('span');
+    top.className = 'tv-key-top';
+    const num = document.createElement('span');
+    num.className = 'tv-key-num';
+    num.textContent = numberOf(i);
+    const led = document.createElement('i');
+    led.className = 'tv-led';
+    led.setAttribute('aria-hidden', 'true');
+    top.append(num, led);
+    const name = document.createElement('span');
+    name.className = 'tv-key-name';
+    name.textContent = ch.short;
+    key.append(top, name);
+    key.addEventListener('click', () => tune(i));
+    el.keypad.append(key);
+    return key;
+  });
+
+  // ---------- The chat follows what you watch ----------
+  // Watching NHK World opens the Japan chat, and so on. Euronews has no single
+  // home country, so it leaves whatever chat is open alone.
+  const offMap = new Map();   // countries too small for the map (Singapore) get a stand-in
+  function followChat(ch) {
+    if (!ch.country) return;
+    let feature = (globe.polygonsData() || []).find((f) => codeOf(f) === ch.country);
+    if (!feature) {
+      if (!offMap.has(ch.country)) offMap.set(ch.country, { properties: { ADM0_A3: ch.country, ADMIN: ch.place } });
+      feature = offMap.get(ch.country);
+    }
+    selectCountry(feature, { lat: ch.lat, lng: ch.lng });
+  }
+
+  // ---------- Playing a channel ----------
+  // First ask our own server which video the channel has live right now (server.js looks
+  // at youtube.com/channel/<id>/live), then play that exact video. Playing by video ID is
+  // what makes BBC News, Sky News and WION work: YouTube's channel-wide "live_stream" link
+  // sometimes picks a video those channels don't allow on other sites. If the lookup fails,
+  // we still fall back to that channel-wide link.
+  let loadCount = 0;   // lets a slow lookup notice that you've already changed channel or stopped
+
+  async function load() {
+    const ch = CHANNELS[current];
+    const ticket = ++loadCount;
+    showBlocked(false);
+
+    let videoId = null;
+    try {
+      const res = await fetch(`/api/live/${ch.youtube}`);
+      videoId = (await res.json()).videoId;
+    } catch {
+      // server unreachable: use the fallback below
+    }
+    if (ticket !== loadCount || mode === 'off') return;   // you moved on while we were waiting
+
+    const params = new URLSearchParams({
+      autoplay: '1',
+      mute: muted ? '1' : '0',
+      playsinline: '1',     // phones play it in the page instead of jumping to full screen
+      enablejsapi: '1',     // lets us talk to the player (unmute, and hear about errors)
+      rel: '0',
+      origin: location.origin,
+    });
+    if (!videoId) params.set('channel', ch.youtube);
+    el.frame.src = `https://www.youtube.com/embed/${videoId || 'live_stream'}?${params}`;
+  }
+
+  // If a channel still won't play here, show a clear message and a YouTube link
+  // instead of YouTube's grey error screen.
+  function showBlocked(on) {
+    const ch = CHANNELS[current];
+    el.blocked.hidden = !on;
+    el.blockedText.textContent = `${ch.name} can't play here right now. The channel may not allow its stream on other websites.`;
+    el.blockedLink.href = `https://www.youtube.com/${ch.handle}/live`;
+    el.unmute.hidden = on || !muted;
+  }
+
+  // The YouTube player only reports events (like errors) after we say we're listening.
+  // It can take a moment to get ready, so we say it a few times after each load.
+  el.frame.addEventListener('load', () => {
+    const hello = () => el.frame.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 'tv' }), 'https://www.youtube.com');
+    hello();
+    setTimeout(hello, 1000);
+    setTimeout(hello, 3000);
+  });
+  window.addEventListener('message', (e) => {
+    if (e.source !== el.frame.contentWindow || e.origin !== 'https://www.youtube.com') return;
+    let data;
+    try { data = JSON.parse(e.data); } catch { return; }
+    // Error codes: 101 and 150 = the owner doesn't allow other websites, 100 = video gone, 2/5 = player error
+    if (data.event === 'onError') showBlocked(true);
+  });
+
+  function setChannel(i) {
+    current = (i + count) % count;   // wraps around: next after the last channel is the first
+    load();
+    followChat(CHANNELS[current]);
+  }
+
+  // Clicking a pin: theater mode, unless the floating monitor is open, then it just switches channel there
+  function watch(i) {
+    openGroup = null;
+    setChannel(i);
+    if (mode === 'float') render();
+    else setMode('theater');
+  }
+
+  // Keypad and ◀ ▶: change channel, stay where you are
+  function tune(i) {
+    setChannel(i);
+    render();
+  }
+
+  function setMode(next) {
+    if (next !== 'theater' && document.fullscreenElement === el.root) {
+      document.exitFullscreen().catch(() => {});
+    }
+    mode = next;
+    if (mode === 'off') {
+      loadCount++;                    // cancel a lookup that's still in progress
+      el.frame.src = 'about:blank';   // unloading the player is what actually stops the sound
+      setGuide(false);
+      showBlocked(false);
+    }
+    refreshPins();
+    render();
+  }
+
+  function setGuide(open) {
+    el.root.classList.toggle('guide-open', open);
+    el.guide.setAttribute('aria-expanded', String(open));
+  }
+
+  // ---------- Update everything on screen to match the state above ----------
+  function render() {
+    const ch = CHANNELS[current];
+    el.root.hidden = mode === 'off';
+    el.root.dataset.mode = mode;   // style.css lays the box out differently for each mode
+    el.viewport.classList.toggle('tv-floating', mode === 'float');
+    el.button.setAttribute('aria-pressed', String(mode !== 'off' || pinsOn));
+
+    el.title.textContent = ch.name;
+    el.num.textContent = numberOf(current);
+    el.name.textContent = ch.name;
+    el.from.textContent = `Live from ${ch.place}`;
+    el.upnext.textContent = `Up next: ${CHANNELS[(current + 1) % count].name}`;
+    el.youtube.href = `https://www.youtube.com/${ch.handle}/live`;
+    el.unmute.hidden = !muted || !el.blocked.hidden;
+
+    keys.forEach((key, i) => {
+      key.classList.toggle('on', i === current);
+      key.setAttribute('aria-pressed', String(i === current));
+    });
+
+    for (const pin of pins) {
+      const btn = pin.el.firstChild;
+      // In the floating monitor, the pin of what's playing glows gold
+      btn.classList.toggle('on', mode === 'float' && pin.members.includes(current));
+      if (!pin.group) continue;
+      btn.setAttribute('aria-expanded', String(openGroup === pin.group));
+      pin.el.querySelector('.tv-cluster').hidden = openGroup !== pin.group;
+      for (const item of pin.el.querySelectorAll('.tv-cluster-item')) {
+        item.classList.toggle('on', mode !== 'off' && Number(item.dataset.index) === current);
+      }
+    }
+  }
+
+  // ---------- Buttons ----------
+  el.button.addEventListener('click', () => {
+    if (mode !== 'off') return setMode('off');   // while watching, the top bar button stops the TV
+    pinsOn = !pinsOn;                              // otherwise it shows or hides the pins
+    openGroup = null;
+    refreshPins();
+    render();
+  });
+  el.back.addEventListener('click', () => setMode('float'));
+  el.expand.addEventListener('click', () => setMode('theater'));
+  el.stop.addEventListener('click', () => setMode('off'));
+  el.prev.addEventListener('click', () => tune(current - 1));
+  el.next.addEventListener('click', () => tune(current + 1));
+  el.guide.addEventListener('click', () => setGuide(!el.root.classList.contains('guide-open')));
+
+  // Browsers block sound until you click something, so the video starts muted.
+  // This sends "unmute" to the YouTube player inside the frame.
+  el.unmute.addEventListener('click', () => {
+    muted = false;
+    for (const func of ['unMute', 'playVideo']) {
+      el.frame.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args: [] }), 'https://www.youtube.com');
+    }
+    render();
+  });
+
+  // Full screen uses the browser's built-in full screen (the same thing YouTube's button does).
+  // Esc to leave it is handled by the browser itself.
+  el.full.addEventListener('click', () => {
+    const request = el.root.requestFullscreen?.();   // older browsers don't have it: then nothing happens
+    if (request) request.catch(() => {});
+  });
+  el.exitFull.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  });
+  document.addEventListener('fullscreenchange', () => {
+    const full = document.fullscreenElement === el.root;
+    el.root.classList.toggle('is-full', full);
+    if (!full) setGuide(false);
+  });
+
+  refreshPins();
+  render();
+
+  return {
+    // Called by the Escape key handler above. Returns true if it used the key.
+    handleEscape() {
+      if (mode !== 'theater') return false;
+      setMode('float');
+      return true;
+    },
+  };
+})();
