@@ -36,3 +36,16 @@ If you get `EADDRINUSE`, something else is already using port 3000. Stop it, or 
 - Messages are limited to 500 characters and one per second per person.
 - Invisible and text-flipping characters are removed, and anything over 10 KB is refused.
 - The newest 50 messages per country are kept. Saved chats live in `data/`, which is in `.gitignore`.
+
+## Moderation (`moderation/`)
+
+Messages are checked by **meaning**, not by a list of banned words. A small language model (all-MiniLM-L6-v2, run locally with `@huggingface/transformers`) turns each message into an embedding, a list of 384 numbers. That embedding is compared with labeled example sentences for harassment, threats, encouraging self-harm, hate, and allowed messages (`safe`). A message is blocked only when it is clearly closer to a harmful category than to the allowed examples. The sender is told why and keeps their text, so nothing is silently removed.
+
+| File | What it does |
+|---|---|
+| `moderation/examples.js` | The example sentences the moderator learns from. Add sentences here to teach it. |
+| `moderation/index.js` | Embeds messages, scores them by cosine similarity, and makes the decision. The thresholds are at the top. |
+| `moderation/test-cases.js` | Separate messages with the expected answer, used to measure accuracy. |
+| `moderation/test.js` | Run `npm run test:moderation` to see what's caught, missed, and wrongly blocked. |
+
+The first start downloads the model (about 23 MB) and caches it. Until it's loaded, messages are let through.

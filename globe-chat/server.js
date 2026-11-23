@@ -4,6 +4,7 @@ const path = require('path');
 const http = require('http');
 const express = require('express');
 const { Server } = require('socket.io');
+const moderation = require('./moderation');
 
 const app = express();
 const server = http.createServer(app);
@@ -160,7 +161,7 @@ io.on('connection', (socket) => {
   });
 
   // User sent a comment
-  socket.on('message', (text, ack) => {
+  socket.on('message', async (text, ack) => {
     if (typeof ack !== 'function') ack = () => {};
     const code = socket.data.country;
 
@@ -177,6 +178,25 @@ io.on('connection', (socket) => {
       return ack({ ok: false, error: 'Slow down a little' });
     }
     socket.data.lastMessageAt = now;
+
+    // Check what the message MEANS before anyone else sees it (see moderation/index.js).
+    // The sender is told why, so it is never a silent block, and keeps their text to edit.
+    let verdict;
+    try {
+      verdict = await moderation.moderate(text);
+    } catch (err) {
+      console.error('Moderation failed, allowing message:', err.message);
+      verdict = { allowed: true };
+    }
+    if (!verdict.allowed) {
+      console.log(`[moderation] blocked ${verdict.category} (${verdict.score} vs safe ${verdict.safeScore}) in ${code}: "${text}"`);
+      return ack({
+        ok: false,
+        error: `Not sent: this reads as ${verdict.label}. Criticizing ideas, governments and public figures is fine. Try rewording.`,
+      });
+    }
+    // The user may have switched countries while the check ran
+    if (socket.data.country !== code) return ack({ ok: false, error: 'You switched countries, message not sent' });
 
     const msg = { id: `${now}-${socket.id}`, country: code, user: socket.data.name, text, ts: now };
 
@@ -195,3 +215,8 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Global News running at http://localhost:${PORT}`));
+
+// Load the moderation model in the background so the site starts right away.
+// Until it's ready (a few seconds, longer on the very first run while it downloads),
+// messages are let through.
+moderation.load().catch((err) => console.error('Moderation model failed to load, chat is unmoderated:', err.message));
