@@ -5,6 +5,9 @@ const http = require('http');
 const express = require('express');
 const { Server } = require('socket.io');
 const moderation = require('./moderation');
+// Test mode: start the server with MODERATION_DEBUG=1 to see WHY each message was
+// allowed or blocked, both in this terminal and under the chat box.
+const MODERATION_DEBUG = process.env.MODERATION_DEBUG === '1';
 
 const app = express();
 const server = http.createServer(app);
@@ -188,12 +191,12 @@ io.on('connection', (socket) => {
       console.error('Moderation failed, allowing message:', err.message);
       verdict = { allowed: true };
     }
+    if (MODERATION_DEBUG) console.log(`[moderation] "${text}"\n  ${moderation.explain(verdict)}`);
     if (!verdict.allowed) {
       console.log(`[moderation] blocked ${verdict.category} (${verdict.score} vs safe ${verdict.safeScore}) in ${code}: "${text}"`);
-      return ack({
-        ok: false,
-        error: `Not sent: this reads as ${verdict.label}. Criticizing ideas, governments and public figures is fine. Try rewording.`,
-      });
+      let error = `Not sent: this reads as ${verdict.label}. Criticizing ideas, governments and public figures is fine. Try rewording.`;
+      if (MODERATION_DEBUG) error += `\nWhy: ${moderation.explain(verdict)}`;
+      return ack({ ok: false, error });
     }
     // The user may have switched countries while the check ran
     if (socket.data.country !== code) return ack({ ok: false, error: 'You switched countries, message not sent' });

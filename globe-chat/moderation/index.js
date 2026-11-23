@@ -126,4 +126,15 @@ async function moderate(text) {
   };
 }
 
-module.exports = { load, moderate, score, isReady, MIN_SCORE, MARGIN };
+// A plain-English explanation of a decision, for testing (MODERATION_DEBUG=1).
+// It shows the numbers the decision was based on, so you can see WHY.
+function explain(v) {
+  if (!v.nearest) return `Not checked (${v.reason || 'no score'})`;
+  const pct = (n) => `${Math.round(n * 100)}%`;
+  const verdict = v.allowed ? 'Allowed' : 'Blocked';
+  return `${verdict}. Closest harmful category: ${v.topHarmful} (${pct(v.score)} match) vs allowed messages (${pct(v.safeScore)} match). ` +
+    `Needs at least ${pct(MIN_SCORE)} and a lead of ${pct(MARGIN)} to block. ` +
+    `Most similar example: "${v.nearest.text}" (${v.nearest.category}, ${pct(v.nearest.similarity)} similar).`;
+}
+
+module.exports = { load, moderate, score, explain, isReady, MIN_SCORE, MARGIN };

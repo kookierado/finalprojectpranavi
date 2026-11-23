@@ -211,7 +211,7 @@ body {
 .msg .when { color: var(--muted); font-variant-numeric: tabular-nums; }
 .msg p { margin: 0; overflow-wrap: anywhere; }
 
-.chat-status { margin: 0; padding: 0 18px; font-size: 13px; color: var(--alarm); }
+.chat-status { margin: 0; padding: 0 18px; font-size: 13px; color: var(--alarm); white-space: pre-line; }  /* pre-line: \n starts a new line */
 .chat-status:empty { display: none; }
 
 .chat-form {
