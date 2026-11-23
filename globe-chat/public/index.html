@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Global News</title>
+  <link rel="preload" href="fonts/chakra-petch-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1 class="brand">Global News</h1>
+    <div class="topbar-status">
+      <!-- Live TV: shows/hides the channel pins on the globe, or stops the TV while something is playing -->
+      <button id="tv-button" class="tv-button" type="button" aria-pressed="true">
+        <i class="tv-dot" aria-hidden="true"></i>Live TV
+      </button>
+      <!-- Connection light: teal when connected, red while reconnecting -->
+      <span class="link" id="link" data-state="connecting">
+        <i class="led" aria-hidden="true"></i>
+        <span id="link-text">Connecting</span>
+      </span>
+      <span id="me" class="me"></span>
+    </div>
+  </header>
+
+  <main class="layout" id="layout">
+    <!-- The view out of the window: stars, the globe, and the porthole frame on top -->
+    <section class="viewport" id="viewport" aria-label="Interactive globe">
+      <canvas id="stars" class="stars" aria-hidden="true"></canvas>
+      <div id="globe" class="globe"></div>
+      <!-- Streaks for the hyperspace jump, drawn in front of the globe -->
+      <canvas id="warp" class="warp" aria-hidden="true"></canvas>
+      <div class="porthole" aria-hidden="true"></div>
+
+      <div class="readout" id="readout" aria-live="polite">
+        <p class="readout-name" id="readout-name">Pick a country to open its channel</p>
+        <p class="readout-coords" id="readout-coords"></p>
+      </div>
+
+      <!-- Live TV. One box that app.js switches between theater mode (covers the globe),
+           the floating monitor (small, bottom left) and full screen. Keeping it one box
+           means the video never reloads when you switch between them. -->
+      <section id="tv" class="tv" data-mode="off" aria-label="Live TV" hidden>
+        <div class="tv-toolbar">
+          <button id="tv-back" class="tv-back" type="button">
+            <span class="mini-globe" aria-hidden="true"></span>
+            <span class="tv-back-text">
+              <strong>Back to globe</strong>
+              <small>Keeps playing in a floating monitor</small>
+            </span>
+          </button>
+          <span class="tv-live"><i aria-hidden="true"></i>LIVE</span>
+          <span id="tv-title" class="tv-title"></span>
+          <span class="tv-spacer"></span>
+          <a id="tv-youtube" class="tv-link" target="_blank" rel="noopener">Open on YouTube <span aria-hidden="true">&#8599;</span></a>
+          <button id="tv-expand" class="tv-icon" type="button" aria-label="Watch in theater mode" title="Theater mode">&#10530;</button>
+          <button id="tv-exit-full" class="tv-exit-full" type="button" aria-label="Exit full screen" title="Exit full screen">
+            <span class="mini-globe mini-globe-lg" aria-hidden="true"></span>
+          </button>
+          <button id="tv-stop" class="tv-icon" type="button" aria-label="Stop watching" title="Stop watching">&times;</button>
+        </div>
+
+        <div class="tv-screen">
+          <iframe id="tv-frame" title="Live news" allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+          <!-- Shown instead of a broken player if a channel won't play on other websites -->
+          <div id="tv-blocked" class="tv-blocked" hidden>
+            <p id="tv-blocked-text"></p>
+            <a id="tv-blocked-link" class="tv-pill" target="_blank" rel="noopener">Watch on YouTube <span aria-hidden="true">&#8599;</span></a>
+          </div>
+          <button id="tv-unmute" class="tv-pill tv-unmute" type="button">Tap to unmute</button>
+          <button id="tv-full" class="tv-pill tv-full" type="button">Full screen</button>
+        </div>
+
+        <div class="tv-controls">
+          <div class="tv-dial">
+            <button id="tv-prev" class="tv-step" type="button" aria-label="Previous channel">&lsaquo;</button>
+            <span class="tv-ch"><small>CH</small><b id="tv-num">01</b></span>
+            <span class="tv-now">
+              <b id="tv-name"></b>
+              <small id="tv-from"></small>
+            </span>
+            <button id="tv-next" class="tv-step" type="button" aria-label="Next channel">&rsaquo;</button>
+          </div>
+          <p id="tv-upnext" class="tv-upnext"></p>
+          <button id="tv-guide" class="tv-pill tv-guide" type="button" aria-expanded="false" aria-controls="tv-keypad">Channels</button>
+        </div>
+
+        <!-- Channel keypad: app.js adds one key per channel from channels.js -->
+        <nav id="tv-keypad" class="tv-keypad" aria-label="Channel guide"></nav>
+      </section>
+    </section>
+
+    <!-- Chat panel. It starts disabled until a country is selected. -->
+    <aside class="chat" id="chat">
+      <!-- Slim tab shown only while the panel is hidden. Click it to reopen. -->
+      <button id="chat-expand" class="chat-expand" type="button" aria-controls="chat" aria-label="Show chat">
+        <span id="chat-expand-label" class="chat-expand-label">Chat</span>
+        <span id="chat-unread" class="chat-unread"></span>
+      </button>
+
+      <div class="chat-header">
+        <h2 id="chat-title">Country chat</h2>
+        <span id="chat-online" class="online"></span>
+        <button id="chat-close" class="icon-btn" type="button" aria-label="Deselect country" title="Deselect country" hidden>&times;</button>
+        <button id="chat-collapse" class="icon-btn" type="button" aria-controls="chat" aria-label="Hide chat" title="Hide chat">&rsaquo;</button>
+      </div>
+
+      <ol id="chat-messages" class="chat-messages"></ol>
+      <p id="chat-empty" class="chat-empty">Select a country to use chat</p>
+
+      <p id="chat-status" class="chat-status" role="status"></p>
+      <form id="chat-form" class="chat-form" autocomplete="off">
+        <input id="chat-input" maxlength="500" placeholder="Select a country to use chat" disabled />
+        <button id="chat-send" type="submit" disabled>Send</button>
+      </form>
+    </aside>
+  </main>
+
+  <!-- socket.io.js is served automatically by the Socket.IO server -->
+  <script src="/socket.io/socket.io.js"></script>
+  <!-- globe.gl is served from node_modules by server.js -->
+  <script src="/vendor/globe.gl.min.js"></script>
+  <!-- The Live TV channel list, loaded before app.js so app.js can use it -->
+  <script src="channels.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

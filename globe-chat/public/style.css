@@ -1,0 +1,667 @@
+/* =====================================================
+   Fonts (stored in public/fonts so they work offline)
+   ===================================================== */
+@font-face { font-family: "Chakra Petch"; font-weight: 400; font-display: swap; src: url("fonts/chakra-petch-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Chakra Petch"; font-weight: 500; font-display: swap; src: url("fonts/chakra-petch-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Chakra Petch"; font-weight: 600; font-display: swap; src: url("fonts/chakra-petch-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 400; font-display: swap; src: url("fonts/ibm-plex-sans-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 500; font-display: swap; src: url("fonts/ibm-plex-sans-latin-500-normal.woff2") format("woff2"); }
+
+/* =====================================================
+   Design tokens: change the look from here
+   ===================================================== */
+:root {
+  --void: #050913;          /* deep space behind the stars */
+  --hull: #12100d;          /* warm dark metal of the cockpit */
+  --screen: #0b0a08;        /* inset console screens (text box) */
+  --seam: rgba(255, 214, 150, 0.09);   /* panel edges */
+  --glow: #f2b544;          /* city-light gold: selection and actions */
+  --glow-dim: rgba(242, 181, 68, 0.38);
+  --signal: #5fd4c4;        /* teal light: live, online, your messages */
+  --alarm: #ef5a5a;         /* red light: errors and lost connection */
+  --text: #dfe7f5;          /* starlight white */
+  --muted: rgba(223, 231, 245, 0.55);
+
+  --font-ui: "Chakra Petch", system-ui, sans-serif;     /* labels, names, buttons */
+  --font-text: "IBM Plex Sans", system-ui, sans-serif;  /* messages and longer text */
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+
+body {
+  display: flex;
+  flex-direction: column;
+  background: var(--void);
+  color: var(--text);
+  font-family: var(--font-text);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+:focus-visible { outline: 2px solid var(--glow); outline-offset: 2px; }
+
+/* =====================================================
+   Top bar
+   ===================================================== */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 52px;
+  padding: 0 20px;
+  background: var(--hull);
+  border-bottom: 1px solid var(--seam);
+}
+.brand { margin: 0; font-family: var(--font-ui); font-size: 20px; font-weight: 600; letter-spacing: 0.01em; }
+.topbar-status { display: flex; align-items: center; gap: 18px; font-size: 13px; color: var(--muted); }
+
+.link { display: inline-flex; align-items: center; gap: 8px; }
+.led {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--glow);
+}
+.link[data-state="connected"] .led { background: var(--signal); box-shadow: 0 0 8px var(--signal); }
+.link[data-state="lost"] .led { background: var(--alarm); box-shadow: 0 0 8px var(--alarm); }
+
+.layout { flex: 1; display: flex; min-height: 0; }
+
+/* =====================================================
+   The view: stars, globe, porthole frame
+   ===================================================== */
+.viewport {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  container-type: size;   /* lets the porthole size itself to this box */
+}
+.stars, .globe, .warp { position: absolute; inset: 0; }
+.stars, .warp { width: 100%; height: 100%; }
+.warp { pointer-events: none; mix-blend-mode: screen; }
+.globe { overflow: hidden; }
+
+/* The round window. Everything outside it is the dark hull. */
+.porthole {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(92cqw, 92cqh);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border-radius: 50%;
+  pointer-events: none;   /* clicks go straight through to the globe */
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 214, 150, 0.22),  /* light catching the glass edge */
+    inset 0 0 70px 14px rgba(3, 6, 14, 0.6),    /* glass darkening toward the rim */
+    0 0 0 18px var(--hull),                     /* the metal frame */
+    0 0 0 19px rgba(255, 214, 150, 0.16),       /* outer edge of the frame */
+    0 0 0 200vmax rgba(10, 9, 8, 0.88);         /* the hull around the window */
+}
+/* Small gold tick marks around the frame, like an instrument bezel */
+.porthole::before {
+  content: "";
+  position: absolute;
+  inset: -15px;
+  border-radius: 50%;
+  background: repeating-conic-gradient(var(--glow-dim) 0 0.35deg, transparent 0.35deg 5deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 8px) calc(100% - 4px), transparent calc(100% - 4px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 8px) calc(100% - 4px), transparent calc(100% - 4px));
+}
+
+/* Country name that follows the mouse (made by globe.gl, restyled here) */
+.globe .float-tooltip-kap {
+  padding: 4px 9px;
+  border: 1px solid var(--seam);
+  border-radius: 4px;
+  background: rgba(18, 16, 13, 0.92);
+  color: var(--text);
+  font: 500 13px var(--font-ui);
+}
+
+/* Country name and coordinates, bottom left of the view */
+.readout {
+  position: absolute;
+  left: 28px;
+  bottom: 24px;
+  max-width: calc(100% - 56px);
+  pointer-events: none;
+}
+.readout-name { margin: 0; font-family: var(--font-ui); font-size: 22px; font-weight: 500; line-height: 1.2; }
+.readout:not(.active) .readout-name { font-size: 15px; color: var(--muted); }
+.readout-coords { margin: 4px 0 0; font-family: var(--font-ui); font-size: 13px; color: var(--glow); font-variant-numeric: tabular-nums; }
+.readout-coords:empty { display: none; }
+
+/* =====================================================
+   Chat console
+   ===================================================== */
+.chat {
+  width: 372px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--hull);
+  border-left: 1px solid var(--seam);
+  transition: width 0.2s ease;
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--seam);
+}
+.chat-header h2 { flex: 1; margin: 0; font-family: var(--font-ui); font-size: 17px; font-weight: 600; line-height: 1.25; }
+
+.online { display: inline-flex; align-items: center; gap: 7px; font-family: var(--font-ui); font-size: 13px; color: var(--signal); white-space: nowrap; }
+.online:not(:empty)::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 6px var(--signal); }
+
+.icon-btn {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.icon-btn:hover { color: var(--text); }
+.icon-btn[hidden] { display: none; }
+
+.chat-messages {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 14px 18px;
+  list-style: none;
+  overflow-y: auto;
+  scrollbar-color: rgba(255, 214, 150, 0.15) transparent;
+}
+/* Show the list only when it has messages, otherwise show the placeholder text */
+.chat-messages:empty { display: none; }
+.chat-messages:not(:empty) + .chat-empty { display: none; }
+
+.chat-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 24px 40px;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* Each message is a log entry: gold edge for others, teal for you */
+.msg {
+  padding: 7px 12px 9px;
+  border-left: 2px solid var(--glow-dim);
+  background: rgba(255, 255, 255, 0.025);
+  border-radius: 0 6px 6px 0;
+}
+.msg.mine { border-left-color: var(--signal); background: rgba(95, 212, 196, 0.06); }
+.msg .meta { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 2px; font-family: var(--font-ui); font-size: 13px; }
+.msg .who { color: var(--glow); font-weight: 500; }
+.msg.mine .who { color: var(--signal); }
+.msg .when { color: var(--muted); font-variant-numeric: tabular-nums; }
+.msg p { margin: 0; overflow-wrap: anywhere; }
+
+.chat-status { margin: 0; padding: 0 18px; font-size: 13px; color: var(--alarm); }
+.chat-status:empty { display: none; }
+
+.chat-form {
+  display: flex;
+  gap: 10px;
+  padding: 14px 18px 18px;
+  border-top: 1px solid var(--seam);
+}
+.chat-form input {
+  flex: 1;
+  min-width: 0;   /* lets the text box shrink so the Send button always fits */
+  padding: 11px 13px;
+  border: 1px solid rgba(255, 214, 150, 0.14);
+  border-radius: 6px;
+  background: var(--screen);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
+  color: var(--text);
+  font: inherit;
+}
+.chat-form input::placeholder { color: var(--muted); }
+.chat-form input:focus { outline: none; border-color: var(--glow-dim); }
+.chat-form input:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.chat-form button {
+  padding: 0 18px;
+  border: none;
+  border-radius: 6px;
+  background: var(--glow);
+  color: #1a1206;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chat-form button:hover { background: #ffc965; }
+.chat-form button:active { translate: 0 1px; }
+.chat-form button:disabled {
+  background: rgba(255, 214, 150, 0.08);
+  color: var(--muted);
+  cursor: not-allowed;
+  translate: none;
+}
+
+/* =====================================================
+   Retractable panel
+   app.js adds .chat-collapsed to the layout when you click ›
+   ===================================================== */
+.chat-expand { display: none; }
+
+.layout.chat-collapsed .chat { width: 44px; }
+.layout.chat-collapsed .chat > :not(.chat-expand) { display: none; }
+.layout.chat-collapsed .chat-expand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  padding: 18px 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+.chat-expand:hover { background: rgba(255, 214, 150, 0.04); }
+.chat-expand-label { writing-mode: vertical-rl; font-size: 14px; font-weight: 500; letter-spacing: 0.04em; }
+.chat-unread {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--glow);
+  color: #1a1206;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+.chat-unread:empty { display: none; }
+
+/* =====================================================
+   Phones: globe on top, chat underneath
+   ===================================================== */
+@media (max-width: 800px) {
+  .topbar { padding: 0 14px; }
+  .me { display: none; }
+  .layout { flex-direction: column; }
+  .viewport { flex: none; height: 56vh; }
+  .readout { left: 16px; bottom: 14px; }
+  .readout-name { font-size: 18px; }
+  .chat { width: 100%; flex: 1; min-height: 0; border-left: none; border-top: 1px solid var(--seam); }
+
+  .layout.chat-collapsed .viewport { flex: 1; height: auto; }
+  .layout.chat-collapsed .chat { width: 100%; flex: none; }
+  .layout.chat-collapsed .chat-expand { flex-direction: row; justify-content: center; padding: 13px 0; }
+  .chat-expand-label { writing-mode: horizontal-tb; }
+}
+
+/* =====================================================
+   Live TV
+   One box (#tv) that app.js switches between three layouts with data-mode:
+   "theater" covers the globe, "float" is the small monitor, and .is-full is full screen.
+   ===================================================== */
+
+/* Live TV button in the top bar */
+.tv-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(223, 231, 245, 0.3);
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font: 500 14px var(--font-ui);
+  cursor: pointer;
+}
+.tv-button[aria-pressed="true"] { border-color: rgba(242, 181, 68, 0.75); background: rgba(242, 181, 68, 0.12); }
+.tv-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--alarm); box-shadow: 0 0 8px var(--alarm); }
+
+/* ---------- Pins on the globe ---------- */
+.tv-pin-wrap { position: relative; pointer-events: auto; }   /* globe.gl turns clicks off for its labels; turn them back on */
+.pins-off .tv-pin-wrap { visibility: hidden; pointer-events: none; }   /* Live TV button turned the pins off */
+.tv-pin {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 13px 0 11px;
+  border: 1px solid rgba(255, 214, 150, 0.22);
+  border-radius: 999px;
+  background: rgba(10, 9, 8, 0.82);
+  color: var(--text);
+  font: 500 13px var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tv-pin::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--alarm); box-shadow: 0 0 0 3px rgba(239, 90, 90, 0.25); }
+.tv-pin:hover { border-color: var(--glow-dim); }
+.tv-pin.on { border-color: var(--glow); background: rgba(40, 30, 12, 0.92); box-shadow: 0 0 18px rgba(242, 181, 68, 0.45); }
+
+/* The list that opens from a shared pin like "Europe · 5" */
+.tv-cluster {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 230px;
+  padding: 6px;
+  background: #17140f;
+  border: 1px solid rgba(255, 214, 150, 0.22);
+  border-radius: 12px;
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.6);
+}
+.tv-cluster[hidden] { display: none; }
+.tv-cluster-item {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font: 15px var(--font-text);
+  text-align: left;
+  cursor: pointer;
+}
+.tv-cluster-item:hover, .tv-cluster-item.on { background: rgba(242, 181, 68, 0.14); }
+
+/* ---------- The TV box: shared pieces ---------- */
+.tv { position: absolute; z-index: 10; color: var(--text); }
+.tv[hidden] { display: none; }
+
+.tv-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tv-spacer { flex: 1; }
+.tv-live { display: inline-flex; align-items: center; gap: 6px; font: 600 13px var(--font-ui); letter-spacing: 0.08em; color: var(--alarm); }
+.tv-live i { width: 8px; height: 8px; border-radius: 50%; background: var(--alarm); }
+.tv-title { font: 500 16px var(--font-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tv-link { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 10px; color: var(--glow); font: 14px var(--font-ui); text-decoration: none; }
+.tv-link:hover { color: #ffd27a; }
+.tv-icon {
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+.tv-icon:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+
+/* "Back to globe" with the little spinning Earth */
+.tv-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 4px 16px 4px 4px;
+  border: 1px solid rgba(255, 214, 150, 0.18);
+  border-radius: 999px;
+  background: var(--hull);
+  color: var(--text);
+  cursor: pointer;
+}
+.tv-back:hover { border-color: var(--glow-dim); }
+.tv-back-text { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.25; }
+.tv-back-text strong { font: 500 15px var(--font-ui); }
+.tv-back-text small { font-size: 12px; color: var(--muted); }
+
+/* The spinning Earth: a flat world map sliding sideways inside a shaded circle.
+   It moves left to right, the same way the real Earth turns. */
+.mini-globe {
+  --size: 48px;
+  width: var(--size);
+  height: var(--size);
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid rgba(242, 181, 68, 0.35);
+  background: url("img/earth-mini.jpg") 0 0 / auto 100% repeat-x;
+  box-shadow:
+    inset -10px -6px 14px rgba(0, 0, 0, 0.8),       /* night side */
+    inset 4px 3px 8px rgba(140, 190, 255, 0.25),    /* lit edge */
+    0 0 14px rgba(80, 140, 255, 0.35);              /* atmosphere glow */
+  animation: mini-globe-spin 16s linear infinite;
+}
+.mini-globe-lg { --size: 56px; animation-name: mini-globe-spin-lg; }
+@keyframes mini-globe-spin { to { background-position: 96px 0; } }      /* map is 2x as wide as the circle */
+@keyframes mini-globe-spin-lg { to { background-position: 112px 0; } }
+@media (prefers-reduced-motion: reduce) { .mini-globe { animation: none; } }
+
+/* The video */
+.tv-screen { position: relative; aspect-ratio: 16 / 9; background: #000; overflow: hidden; }
+.tv-screen iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.tv-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 214, 150, 0.25);
+  border-radius: 10px;
+  background: rgba(10, 9, 8, 0.8);
+  color: var(--text);
+  font: 13px var(--font-ui);
+  cursor: pointer;
+}
+.tv-pill:hover { border-color: var(--glow-dim); }
+.tv-pill[hidden] { display: none; }
+.tv-unmute { position: absolute; left: 12px; bottom: 12px; }
+
+/* Message shown over the player when a channel can't play here */
+.tv-blocked {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  background: #000;
+  color: var(--muted);
+  text-align: center;
+}
+.tv-blocked[hidden] { display: none; }
+.tv-blocked p { margin: 0; max-width: 420px; }
+.tv-blocked a { color: var(--glow); text-decoration: none; }
+.tv-full { position: absolute; right: 12px; bottom: 12px; }
+
+/* CH ◀ 04 DW News ▶ */
+.tv-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.tv-dial {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid rgba(255, 214, 150, 0.18);
+  border-radius: 14px;
+  background: var(--hull);
+}
+.tv-step {
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 10px;
+  background: var(--screen);
+  color: var(--text);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+.tv-step:hover { color: var(--glow); }
+.tv-ch { display: flex; flex-direction: column; align-items: center; line-height: 1; padding-left: 8px; font-family: var(--font-ui); color: var(--glow); }
+.tv-ch small { font-size: 11px; font-weight: 600; letter-spacing: 0.12em; }
+.tv-ch b { font-size: 30px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tv-now { display: flex; flex-direction: column; min-width: 190px; padding: 0 8px; line-height: 1.3; }
+.tv-now b { font: 500 18px var(--font-ui); }
+.tv-now small { font-size: 13px; color: var(--muted); }
+.tv-upnext { margin: 0; font-size: 13px; color: var(--muted); }
+.tv-guide { display: none; }
+
+/* Keypad: all channels, no scrolling. The playing one gets a red light. */
+.tv-keypad { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.tv-key {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 60px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 214, 150, 0.12);
+  border-radius: 10px;
+  background: var(--screen);
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.tv-key:hover { border-color: rgba(255, 214, 150, 0.3); }
+.tv-key.on { border-color: var(--glow); background: rgba(242, 181, 68, 0.1); box-shadow: 0 0 16px rgba(242, 181, 68, 0.22); }
+.tv-key-top { display: flex; align-items: center; justify-content: space-between; }
+.tv-key-num { font: 600 13px var(--font-ui); color: var(--glow); font-variant-numeric: tabular-nums; }
+.tv-led { width: 8px; height: 8px; border-radius: 50%; background: rgba(223, 231, 245, 0.14); }
+.tv-key.on .tv-led { background: var(--alarm); box-shadow: 0 0 8px var(--alarm); }
+.tv-key-name { font: 500 15px var(--font-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- Theater mode: covers the globe ---------- */
+.tv[data-mode="theater"] {
+  /* How wide the video can be: at most 840px, and short enough that the keypad still fits below it */
+  --tv-width: min(840px, 100%, calc((100cqh - 330px) * 16 / 9));
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 24px 20px;
+  background: #030509;
+  overflow-y: auto;
+}
+.tv[data-mode="theater"] .tv-toolbar { align-self: stretch; }
+.tv[data-mode="theater"] .tv-screen { width: var(--tv-width); min-width: min(480px, 100%); }
+/* On shorter screens the video shrinks, but the keypad stays wide enough for the channel names */
+.tv[data-mode="theater"] .tv-controls,
+.tv[data-mode="theater"] .tv-keypad { width: max(var(--tv-width), min(800px, 100%)); }
+.tv[data-mode="theater"] .tv-screen { border-radius: 12px; box-shadow: 0 0 0 1px rgba(255, 214, 150, 0.1), 0 30px 80px rgba(0, 0, 0, 0.7); }
+.tv[data-mode="theater"] .tv-title,
+.tv[data-mode="theater"] #tv-expand,
+.tv[data-mode="theater"] .tv-exit-full { display: none; }
+
+/* ---------- Floating monitor: small, bottom left, the globe stays usable ---------- */
+.tv[data-mode="float"] {
+  left: 20px;
+  bottom: 20px;
+  width: min(400px, calc(100% - 40px));
+  display: flex;
+  flex-direction: column;
+  background: rgba(18, 16, 13, 0.95);
+  border: 1px solid rgba(255, 214, 150, 0.18);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+.tv[data-mode="float"] .tv-toolbar { flex-wrap: nowrap; gap: 6px; padding: 2px 2px 2px 14px; border-bottom: 1px solid var(--seam); }
+.tv[data-mode="float"] .tv-title { flex: 1; }
+.tv[data-mode="float"] .tv-spacer,
+.tv[data-mode="float"] .tv-back,
+.tv[data-mode="float"] .tv-link,
+.tv[data-mode="float"] .tv-exit-full,
+.tv[data-mode="float"] .tv-full,
+.tv[data-mode="float"] .tv-upnext,
+.tv[data-mode="float"] .tv-keypad,
+.tv[data-mode="float"] .tv-now small { display: none; }
+.tv[data-mode="float"] .tv-controls { padding: 2px 4px; }
+.tv[data-mode="float"] .tv-dial { gap: 2px; padding: 0; border: none; background: none; }
+.tv[data-mode="float"] .tv-step { background: none; }
+.tv[data-mode="float"] .tv-ch { flex-direction: row; align-items: baseline; gap: 5px; padding: 0; }
+.tv[data-mode="float"] .tv-ch b { font-size: 16px; }
+.tv[data-mode="float"] .tv-now { min-width: 0; }
+.tv[data-mode="float"] .tv-now b { font-size: 14px; }
+/* The country name in the corner would sit under the monitor, so hide it while the monitor is open */
+.viewport.tv-floating .readout { display: none; }
+
+/* ---------- Full screen: just the video, controls float on top ---------- */
+.tv.is-full { padding: 0; background: #000; }
+.tv.is-full .tv-screen { position: absolute; inset: 0; width: auto; min-width: 0; aspect-ratio: auto; border-radius: 0; box-shadow: none; }
+.tv.is-full .tv-toolbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  padding: 14px 16px 40px 24px;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.85), transparent);   /* darkens the top of the video so the text is readable */
+}
+.tv.is-full .tv-back,
+.tv.is-full #tv-stop,
+.tv.is-full .tv-full,
+.tv.is-full .tv-upnext { display: none; }
+.tv.is-full .tv-title { display: inline; font-size: 20px; }
+.tv.is-full .tv-exit-full {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 1px solid rgba(242, 181, 68, 0.3);
+  border-radius: 50%;
+  background: rgba(18, 16, 13, 0.6);
+  cursor: pointer;
+}
+.tv-exit-full { display: none; }
+.tv.is-full .tv-unmute { left: 24px; bottom: 24px; z-index: 2; }
+.tv.is-full .tv-controls {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  translate: -50% 0;
+  z-index: 2;
+  width: min(840px, calc(100% - 300px));
+}
+.tv.is-full .tv-dial { background: rgba(18, 16, 13, 0.85); }
+.tv.is-full .tv-guide { display: inline-flex; margin-left: auto; }
+.tv.is-full .tv-guide[aria-expanded="true"] { border-color: var(--glow); background: rgba(242, 181, 68, 0.14); }
+.tv.is-full .tv-keypad {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  translate: -50% 0;
+  z-index: 2;
+  width: min(840px, calc(100% - 48px));
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid rgba(255, 214, 150, 0.16);
+  border-radius: 14px;
+  background: rgba(18, 16, 13, 0.9);
+}
+.tv.is-full:not(.guide-open) .tv-keypad { display: none; }
+
+/* ---------- Phones ---------- */
+@media (max-width: 800px) {
+  .tv-button { min-height: 32px; padding: 0 10px; font-size: 13px; }
+  .tv[data-mode="theater"] { padding: 10px 12px 14px; }
+  .tv[data-mode="theater"] .tv-screen,
+  .tv[data-mode="theater"] .tv-controls,
+  .tv[data-mode="theater"] .tv-keypad { width: 100%; min-width: 0; }
+  .tv-keypad { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tv-back-text small { display: none; }
+  .tv[data-mode="float"] { left: 10px; bottom: 10px; width: min(300px, calc(100% - 20px)); }
+}
